@@ -23,7 +23,7 @@ namespace Tweek.Publishing.Service.Handlers
                 try
                 {
                     await retryPolicy
-                        .ExecuteAsync(syncActor.SyncToLatest);
+                        .ExecuteAsync(()=>syncActor.SyncResources(true));
                                         
                 }
                 catch (Exception ex)

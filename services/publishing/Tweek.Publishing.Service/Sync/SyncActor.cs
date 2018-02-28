@@ -60,11 +60,11 @@ namespace Tweek.Publishing.Service.Sync
             return tcs;
         }
 
-        public async Task SyncToLatest()
+        public async Task SyncArtifacts(bool pullFromUpstream = false)
         {
-            var tcs = AddAction(nameof(SyncToLatest), async () =>
+            var tcs = AddAction(nameof(SyncArtifacts), async () =>
             {
-                var commitId = await _repoSynchronizer.SyncToLatest();
+                var commitId = pullFromUpstream ? await _repoSynchronizer.SyncToLatest() : await _repoSynchronizer.CurrentHead();
                 await _storageSynchronizer.Sync(commitId);
                 await _publisher.Publish("version", commitId);
                 _logger.LogInformation($"Sync:Commit:{commitId}");

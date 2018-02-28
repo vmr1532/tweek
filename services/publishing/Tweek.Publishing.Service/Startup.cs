@@ -77,21 +77,18 @@ namespace Tweek.Publishing.Service
             return minioConfig.GetValue("UseSSL", false) ? mc.WithSSL() : mc;
         }
 
-        private void RunIntervalPublisher(IApplicationLifetime lifetime, Func<string,Task> publisher,
-            RepoSynchronizer repoSynchronizer, StorageSynchronizer storageSynchronizer)
+        private void RunIntervalPublisher(IApplicationLifetime lifetime, SyncActor actor)
         {
-            var intervalPublisher = new IntervalPublisher(publisher);
-            var job = intervalPublisher.PublishEvery(TimeSpan.FromSeconds(60), async () =>
-            {
-                var commitId = await repoSynchronizer.CurrentHead();
-                await Policy.Handle<StaleRevisionException>()
-                    .RetryAsync(10, async (_,c)=> await repoSynchronizer.SyncToLatest())
-                    .ExecuteAsync(async ()=> await storageSynchronizer.Sync(commitId));
+             var sub = Observable.FromAsync(async (ct) => {
+                  await Policy.Handle<StaleRevisionException>()
+                    .RetryAsync(3, async (_,c)=> await actor.SyncArtifacts(pullFromUpstream: true))
+                    .ExecuteAsync(async ()=> await actor.SyncArtifacts());
+                })
+                .Repeat()
+                .Retry()
+                .Subscribe();
 
-                _logger.LogInformation($"SyncVersion:{commitId}");
-                return commitId;
-            });
-            lifetime.ApplicationStopping.Register(job.Dispose);
+            lifetime.ApplicationStopping.Register(()=>sub.Dispose());
         }
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory,
@@ -132,8 +129,8 @@ namespace Tweek.Publishing.Service
             var storageSynchronizer = new StorageSynchronizer(storageClient, executor, new Packer());
 
             storageSynchronizer.Sync(repoSynchronizer.CurrentHead().Result, checkForStaleRevision: false).Wait();
-            RunIntervalPublisher(lifetime, versionPublisher, repoSynchronizer, storageSynchronizer);
             var syncActor = SyncActor.Create(storageSynchronizer, repoSynchronizer, natsClient, lifetime.ApplicationStopping, loggerFactory.CreateLogger("SyncActor"));
+            RunIntervalPublisher(lifetime, syncActor);
 
             app.UseRouter(router =>
             {
