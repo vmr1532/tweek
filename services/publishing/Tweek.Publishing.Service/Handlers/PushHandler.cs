@@ -27,7 +27,7 @@ namespace Tweek.Publishing.Service.Handlers
                     res.StatusCode = 500;
                     await res.WriteAsync(ex.Message);
                 }
-                syncActor.SyncArtifacts(true);
+                syncActor.SyncArtifacts(pullFromUpstream: true);
             };
         }
     }
